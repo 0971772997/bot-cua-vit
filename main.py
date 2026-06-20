@@ -41,6 +41,7 @@ YTDL_OPTIONS = {
     'default_search': 'auto',
     'source_address': '0.0.0.0',
     'cookiefile': 'cookies.txt'
+    'extractor_args': {'youtube': ['player_client=android', 'player_skip=webpage']}
 }
 
 FFMPEG_OPTIONS = {
