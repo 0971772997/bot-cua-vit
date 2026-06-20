@@ -11,7 +11,6 @@ WORKDIR /app
 COPY . .
 
 # Cài đặt các thư viện Python
-RUN pip install --no-cache-dir -U yt-dlp
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Mở cổng 8080 cho Flask
