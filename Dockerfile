@@ -10,7 +10,7 @@ WORKDIR /app
 # Copy toàn bộ code từ máy bạn vào máy chủ
 COPY . .
 
-# Cài đặt các thư viện Python
+# Cài đặt các thư viện Python (Sửa dòng này cho sạch sẽ)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Mở cổng 8080 cho Flask
