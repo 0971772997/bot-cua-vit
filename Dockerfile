@@ -1,4 +1,4 @@
-# Sử dụng phiên bản Python Linux rút gọn
+# 使用 phiên bản Python Linux rút gọn chuẩn
 FROM python:3.11-slim
 
 # Cài đặt công cụ FFmpeg hệ thống và các công cụ biên dịch cần thiết
@@ -7,13 +7,13 @@ RUN apt-get update && apt-get install -y ffmpeg gcc g++ --no-install-recommends 
 # Đặt thư mục làm việc trong máy chủ
 WORKDIR /app
 
-# Copy toàn bộ code từ máy bạn vào máy chủ
+# Sao chép toàn bộ mã nguồn vào máy chủ
 COPY . .
 
-# Cài đặt các thư viện Python (Sửa dòng này cho sạch sẽ)
+# Cài đặt toàn bộ các thư viện Python từ file requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Mở cổng 8080 cho Flask
+# Mở cổng 8080 cho Flask (Render cần cổng này để duy trì dịch vụ Web)
 EXPOSE 8080
 
 # Lệnh khởi chạy Bot
