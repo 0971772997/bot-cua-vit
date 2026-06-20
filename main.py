@@ -31,7 +31,7 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
 # 2. CẤU HÌNH LIÊN KẾT LUỒNG ÂM THANH (FFMPEG & YT-DLP)
 # ==========================================
 YTDL_OPTIONS = {
-    'format': 'best',
+    'format': 'bestaudio/best/bestvideo+bestaudio/best',
     'noplaylist': True,
     'nocheckcertificate': True,
     'ignoreerrors': False,
