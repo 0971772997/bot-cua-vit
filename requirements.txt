@@ -1,5 +1,5 @@
 discord.py
-yt-dlp
+yt-dlp --upgrade
 requests
 beautifulsoup4
 Flask
