@@ -40,9 +40,9 @@ YTDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    'cookiefile': 'cookies.txt',
+    #'cookiefile': 'cookies.txt',
     # CHUYỂN SANG CLIENT TVHTML5 ĐỂ LẤY ĐỊNH DẠNG AUDIO CHUẨN
-    'extractor_args': {'youtube': ['player_client=tvhtml5']}
+    'extractor_args': {'youtube': ['player_client=ios']}
 }
 
 FFMPEG_OPTIONS = {
