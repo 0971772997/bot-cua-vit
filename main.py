@@ -14,11 +14,22 @@ import re
 # ==========================================
 # 1. KHỞI TẠO BIẾN MÔI TRƯỜNG & API
 # ==========================================
-load_dotenv(override=False)
+# Kiểm tra nếu đang chạy trên môi trường Render (Docker) thì bỏ qua load_dotenv
+if os.getenv('RENDER') or os.path.exists('/app'):
+    print("🚀 Đang chạy trên Render Docker. Ép buộc đọc Token từ giao diện Render!")
+else:
+    load_dotenv() # Chỉ chạy ở máy tính cá nhân thì mới đọc file .env
 
-DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
-SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
-SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+# Đọc trực tiếp biến hệ thống
+DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN')
+SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID')
+SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET')
+
+# In một chút ký tự để debug xem Token có bị trống không
+if DISCORD_TOKEN:
+    print(f"🔒 Token hợp lệ (Độ dài: {len(DISCORD_TOKEN)} ký tự)")
+else:
+    print("❌ CẢNH BÁO: Không tìm thấy DISCORD_TOKEN trong hệ thống!")
 
 # Khởi tạo thư viện kết nối Spotify API
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
