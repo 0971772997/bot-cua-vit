@@ -64,4 +64,144 @@ class YTDLSource(discord.PCMVolumeTransformer):
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
         if 'entries' in data:
             data = data['entries'][0]
-        filename =
+        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
+
+# ==========================================
+# 3. KHỞI TẠO CẤU HÌNH BOT DISCORD
+# ==========================================
+intents = discord.Intents.default()
+intents.message_content = True # Bắt buộc phải bật trong Developer Portal để bot đọc được lệnh chat
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Khởi tạo bộ nhớ tạm để lưu danh sách hàng đợi cho từng Server (Guild)
+music_queues = {}
+
+def check_queue(ctx):
+    """Hàm kiểm tra hàng đợi tự động sau khi một bài hát kết thúc"""
+    if ctx.guild.id in music_queues and music_queues[ctx.guild.id]:
+        next_track = music_queues[ctx.guild.id].pop(0)
+        
+        async def play_next():
+            async with ctx.typing():
+                try:
+                    player = await YTDLSource.from_url(next_track['url'], loop=bot.loop, stream=True)
+                    ctx.voice_client.play(player, after=lambda e: check_queue(ctx))
+                    await ctx.send(f"🎵 **Đang phát bài tiếp theo:** `{player.title}`")
+                except Exception as e:
+                    await ctx.send(f"❌ Gặp lỗi khi cố phát bài tiếp theo: {e}")
+                    check_queue(ctx)
+                    
+        asyncio.run_coroutine_threadsafe(play_next(), bot.loop)
+    else:
+        # Cơ chế thông minh: Nếu sau 3 phút không có ai thêm nhạc, bot tự rời phòng để đỡ tốn tài nguyên
+        async def auto_leave():
+            await asyncio.sleep(180)
+            if ctx.voice_client and not ctx.voice_client.is_playing():
+                await ctx.voice_client.disconnect()
+                await ctx.send("💤 Không có bài hát nào trong hàng đợi suốt 3 phút, mình đi ngủ đây! 👋")
+        asyncio.run_coroutine_threadsafe(auto_leave(), bot.loop)
+
+def parse_spotify_track(url):
+    """Trích xuất ID bài hát từ đường link dạng Track của Spotify"""
+    match = re.search(r"track/([a-zA-Z0-9]+)", url)
+    if match:
+        return match.group(1)
+    return None
+
+# ==========================================
+# 4. ĐỊNH NGHĨA CÁC CÂU LỆNH ĐIỀU KHIỂN
+# ==========================================
+@bot.event
+async def on_ready():
+    print(f'✅ Khởi tạo thành công! Bot đã sẵn sàng hoạt động với tên: {bot.user}')
+
+@bot.command(name='play', help='Phát nhạc từ link YouTube, SoundCloud, Spotify hoặc tìm bằng từ khóa')
+async def play(ctx, *, search: str):
+    if not ctx.author.voice:
+        return await ctx.send("❌ Bạn phải tham gia vào một kênh thoại (Voice Channel) trước!")
+        
+    if not ctx.voice_client:
+        await ctx.author.voice.channel.connect()
+    elif ctx.voice_client.channel != ctx.author.voice.channel:
+        return await ctx.send("❌ Bot đang bận phát nhạc ở một phòng thoại khác rồi!")
+
+    # [XỬ LÝ ĐẶC BIỆT] Nhận diện link Spotify bài hát lẻ (KHÔNG CẦN API)
+    if "spotify.com" in search and "track" in search:
+        await ctx.send("🔍 Đang luồn lách để đọc tên bài hát từ Spotify...")
+        try:
+            # Gửi yêu cầu ẩn danh đến trang web Spotify
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            res = await bot.loop.run_in_executor(None, lambda: requests.get(search, headers=headers))
+            soup = BeautifulSoup(res.text, 'html.parser')
+            
+            # Lấy thẻ tiêu đề (thường có dạng: "Tên bài hát - song and lyrics by Tên ca sĩ | Spotify")
+            title = soup.find('title').text
+            
+            # Dọn dẹp chuỗi chữ để làm từ khóa tìm kiếm
+            clean_title = title.replace(" - song and lyrics by", "").replace(" - song by", "").replace(" | Spotify", "")
+            search = f"{clean_title} official audio"
+            await ctx.send(f"✅ Đã tìm ra: **{clean_title}**. Đang chuyển hướng sang YouTube...")
+        except Exception as e:
+            return await ctx.send(f"❌ Lách luật Spotify thất bại: {e}")
+
+    if ctx.guild.id not in music_queues:
+        music_queues[ctx.guild.id] = []
+
+    async with ctx.typing():
+        try:
+            # Thu thập luồng dữ liệu thông qua yt-dlp (Tự động nhận diện link YT, SoundCloud hoặc từ khóa chữ)
+            data = await bot.loop.run_in_executor(None, lambda: ytdl.extract_info(search, download=False))
+            if 'entries' in data:
+                data = data['entries'][0]
+                
+            track_data = {
+                'url': data['webpage_url'],
+                'title': data['title']
+            }
+            
+            # Nếu bot đang phát nhạc, tự động đẩy bài mới vào danh sách chờ (Queue)
+            if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
+                music_queues[ctx.guild.id].append(track_data)
+                await ctx.send(f"⏳ Đã thêm vào hàng đợi vị trí #{len(music_queues[ctx.guild.id])}: `{track_data['title']}`")
+            else:
+                # Nếu phòng đang trống nhạc, phát ngay lập tức
+                player = await YTDLSource.from_url(track_data['url'], loop=bot.loop, stream=True)
+                ctx.voice_client.play(player, after=lambda e: check_queue(ctx))
+                await ctx.send(f"🎵 **Đang phát:** `{player.title}`")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Không thể xử lý yêu cầu âm nhạc này. Lỗi: {e}")
+
+@bot.command(name='skip', help='Bỏ qua bài hát hiện tại')
+async def skip(ctx):
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.stop() # Hàm stop() này sẽ tự động kích hoạt sự kiện `after` để chạy tiếp check_queue
+        await ctx.send("⏭️ Đã bỏ qua bài hát hiện tại!")
+    else:
+        await ctx.send("❌ Hiện tại bot đang không phát bài nhạc nào cả.")
+
+@bot.command(name='queue', help='Hiển thị danh sách hàng đợi nhạc')
+async def queue(ctx):
+    if ctx.guild.id not in music_queues or not music_queues[ctx.guild.id]:
+        return await ctx.send("📭 Hàng đợi hiện đang trống rỗng.")
+        
+    message = "📋 **Danh sách bài hát tiếp theo:**\n"
+    for i, track in enumerate(music_queues[ctx.guild.id][:10], 1):
+        message += f"{i}. `{track['title']}`\n"
+    if len(music_queues[ctx.guild.id]) > 10:
+        message += f"...và {len(music_queues[ctx.guild.id]) - 10} bài hát khác."
+    await ctx.send(message)
+
+@bot.command(name='leave', help='Đuổi bot khỏi kênh thoại')
+async def leave(ctx):
+    if ctx.voice_client:
+        music_queues[ctx.guild.id] = [] # Xóa sạch hàng đợi của server đó khi tắt bot
+        await ctx.voice_client.disconnect()
+        await ctx.send("👋 Tạm biệt mọi người, mình đi đây!")
+    else:
+        await ctx.send("❌ Mình hiện tại không ở trong kênh thoại nào cả.")
+
+# Kích hoạt chạy bot bằng token bảo mật
+#keep_alive()
+bot.run(DISCORD_TOKEN)
