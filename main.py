@@ -31,7 +31,7 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
 # 2. CẤU HÌNH LIÊN KẾT LUỒNG ÂM THANH (FFMPEG & YT-DLP)
 # ==========================================
 YTDL_OPTIONS = {
-    'format': 'best',
+    'format': 'bestaudio/best',  # Đặt lại thành cấu hình audio chuẩn cho nhẹ băng thông
     'noplaylist': True,
     'nocheckcertificate': True,
     'ignoreerrors': False,
@@ -41,7 +41,8 @@ YTDL_OPTIONS = {
     'default_search': 'auto',
     'source_address': '0.0.0.0',
     'cookiefile': 'cookies.txt',
-    'extractor_args': {'youtube': ['player_client=ios', 'player_skip=webpage']}
+    # CHUYỂN SANG CLIENT TVHTML5 ĐỂ LẤY ĐỊNH DẠNG AUDIO CHUẨN
+    'extractor_args': {'youtube': ['player_client=tvhtml5']}
 }
 
 FFMPEG_OPTIONS = {
