@@ -14,7 +14,7 @@ import re
 # ==========================================
 # 1. KHỞI TẠO BIẾN MÔI TRƯỜNG & API
 # ==========================================
-load_dotenv() # Tải các cấu hình bảo mật từ file .env
+load_dotenv(override=False)
 
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
