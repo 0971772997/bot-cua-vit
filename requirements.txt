@@ -6,5 +6,3 @@ Flask
 spotipy
 PyNaCl
 python-dotenv
-davey
-PyNaCl
