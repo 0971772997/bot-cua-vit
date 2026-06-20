@@ -215,4 +215,8 @@ async def leave(ctx):
 
 # Kích hoạt chạy bot bằng token bảo mật
 #keep_alive()
+if not DISCORD_TOKEN:
+    raise ValueError("❌ KHÔNG THỂ KHỞI CHẠY BOT: Biến DISCORD_TOKEN hoàn toàn trống rỗng trên hệ thống!")
+
+print(f"🚀 Tiến trình kích hoạt hệ thống với Token có tiền tố: {DISCORD_TOKEN[:10]}...")
 bot.run(DISCORD_TOKEN)
