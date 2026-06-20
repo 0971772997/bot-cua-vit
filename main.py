@@ -31,20 +31,23 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
 # 2. CẤU HÌNH LIÊN KẾT LUỒNG ÂM THANH (FFMPEG & YT-DLP)
 # ==========================================
 YTDL_OPTIONS = {
-    'format': 'bestaudio/best/bestvideo+bestaudio/best',
+    'format': 'bestaudio/best',
     'noplaylist': True,
     'nocheckcertificate': True,
     'ignoreerrors': False,
-    'logtostderr': False,
-    'quiet': True,
+    
+    # 1. BẬT LOG ĐỂ XEM MÃ CODE ĐĂNG NHẬP
+    'logtostderr': True, 
+    'quiet': False,      
+    
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    #'cookiefile': 'cookies.txt',
-    # CHUYỂN SANG CLIENT TVHTML5 ĐỂ LẤY ĐỊNH DẠNG AUDIO CHUẨN
-    'extractor_args': {'youtube': ['player_client=ios']}
+    
+    # 2. KÍCH HOẠT CHẾ ĐỘ ĐĂNG NHẬP TV (OAUTH2)
+    'username': 'oauth2',
+    'password': ''
 }
-
 FFMPEG_OPTIONS = {
     # Tự động kết nối lại nếu luồng stream từ YouTube/SoundCloud bị ngắt quãng giữa chừng
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
