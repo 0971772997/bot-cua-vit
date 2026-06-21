@@ -80,6 +80,11 @@ def check_queue(ctx):
                     check_queue(ctx)
         asyncio.run_coroutine_threadsafe(play_next(), bot.loop)
     else:
+        # Hết nhạc thì gửi thông báo nhưng KHÔNG tự động out
+        async def stay_in_vc():
+            await ctx.send("💿 Đã phát hết danh sách chờ! Vịt sẽ treo ở đây, hãy gõ thêm bài để nghe tiếp nhé.")
+        asyncio.run_coroutine_threadsafe(stay_in_vc(), bot.loop)
+    else:
         async def auto_leave():
             await asyncio.sleep(180)
             if ctx.voice_client and not ctx.voice_client.is_playing():
