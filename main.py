@@ -15,6 +15,9 @@ DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN', '').strip()
 SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID', '').strip()
 SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', '').strip()
 
+# Thêm biến nhận diện lệnh (Mặc định là !kitty)
+BOT_PREFIX = os.environ.get('BOT_PREFIX', '!kitty').strip()
+
 if not DISCORD_TOKEN:
     raise ValueError("❌ KHÔNG CÓ TOKEN! Hãy nhập DISCORD_TOKEN lên hệ thống Render.")
 
@@ -31,7 +34,7 @@ YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
-    'default_search': 'scsearch', # Ép tìm qua SoundCloud
+    'default_search': 'scsearch',
     'source_address': '0.0.0.0'
 }
 
@@ -63,7 +66,9 @@ class YTDLSource(discord.PCMVolumeTransformer):
 # ==========================================
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='!kitty ', intents=intents)
+
+# Gán lệnh động cho bot (Có dấu cách ở đuôi)
+bot = commands.Bot(command_prefix=f"{BOT_PREFIX} ", intents=intents)
 music_queues = {}
 
 def check_queue(ctx):
@@ -81,7 +86,7 @@ def check_queue(ctx):
         asyncio.run_coroutine_threadsafe(play_next(), bot.loop)
     else:
         async def stay_in_vc():
-            await ctx.send("💿 Đã phát hết danh sách chờ! Vịt sẽ treo ở đây, hãy gõ thêm bài để nghe tiếp nhé.")
+            await ctx.send(f"💿 Đã phát hết danh sách chờ! Hãy gõ thêm bài bằng lệnh `{BOT_PREFIX} play` để nghe tiếp nhé.")
         asyncio.run_coroutine_threadsafe(stay_in_vc(), bot.loop)
 
 # ==========================================
@@ -90,8 +95,9 @@ def check_queue(ctx):
 @bot.event
 async def on_ready():
     print(f'✅ Bot đã online thành công: {bot.user}')
+    print(f'🔑 Lệnh hiện tại của bot là: {BOT_PREFIX} [lệnh]')
 
-@bot.command(name='play', help='Phát nhạc từ SoundCloud hoặc Spotify')
+@bot.command(name='play', help='Phát nhạc')
 async def play(ctx, *, search: str):
     if not ctx.author.voice:
         return await ctx.send("❌ Bạn phải vào Voice Channel trước!")
@@ -99,7 +105,6 @@ async def play(ctx, *, search: str):
     if not ctx.voice_client:
         await ctx.author.voice.channel.connect()
 
-    # Nhận diện link Spotify chuẩn
     if "spotify.com" in search:
         try:
             track_info = sp.track(search)
@@ -110,7 +115,6 @@ async def play(ctx, *, search: str):
         except Exception as e:
             return await ctx.send("❌ Lỗi đọc link Spotify. Bạn kiểm tra lại link nhé!")
     
-    # Ép tìm qua SoundCloud nếu là chữ bình thường
     elif not search.startswith("http"):
         search = f"scsearch:{search}"
 
@@ -127,7 +131,7 @@ async def play(ctx, *, search: str):
                 ctx.voice_client.play(player, after=lambda e: check_queue(ctx))
                 await ctx.send(f"🎵 **Đang phát:** `{player.title}`")
         except Exception as e:
-            await ctx.send("❌ Không tìm thấy bản nhạc này trên SoundCloud!")
+            await ctx.send("❌ Không tìm thấy bản nhạc này!")
 
 @bot.command(name='skip', help='Bỏ qua bài hiện tại')
 async def skip(ctx):
@@ -142,30 +146,26 @@ async def leave(ctx):
         await ctx.voice_client.disconnect()
         await ctx.send("👋 Bye bye!")
 
-@bot.command(name='queue', aliases=['q'], help='Xem danh sách bài hát đang chờ')
+@bot.command(name='queue', aliases=['q'], help='Xem danh sách')
 async def queue_cmd(ctx):
     if ctx.guild.id in music_queues and music_queues[ctx.guild.id]:
         queue_list = music_queues[ctx.guild.id]
-        msg = "**🎶 Danh sách chờ của Vịt:**\n"
-        
-        # Duyệt qua các bài hát trong hàng đợi
+        msg = "**🎶 Danh sách chờ:**\n"
         for i, track in enumerate(queue_list, 1):
-            # Xóa chữ "scsearch:" đi cho đẹp mắt
             clean_name = track.replace("scsearch:", "")
             msg += f"**{i}.** `{clean_name}`\n"
-            
         await ctx.send(msg)
     else:
-        await ctx.send("📭 Hàng đợi hiện tại đang trống trơn. Hãy thêm nhạc bằng lệnh `!kitty play` nha!")
+        await ctx.send(f"📭 Hàng đợi trống. Thêm nhạc bằng lệnh `{BOT_PREFIX} play` nha!")
 
 # ==========================================
-# 5. MỞ CỔNG WEB ẢO (CHỐNG RENDER TIMEOUT)
+# 5. MỞ CỔNG WEB ẢO
 # ==========================================
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot Vit De Thuong dang hoat dong!")
+        self.wfile.write(b"Bot dang hoat dong!")
         
     def do_HEAD(self):
         self.send_response(200)
@@ -177,10 +177,7 @@ class DummyHandler(BaseHTTPRequestHandler):
 def keep_alive():
     port = int(os.environ.get('PORT', 10000))
     server = HTTPServer(('0.0.0.0', port), DummyHandler)
-    print(f"🌐 Đã mở cổng Web ảo tại Port {port} để Render kiểm tra...")
     server.serve_forever()
 
 threading.Thread(target=keep_alive, daemon=True).start()
-
-# Chạy bot (Chỉ 1 dòng duy nhất)
 bot.run(DISCORD_TOKEN)
