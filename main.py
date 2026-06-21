@@ -80,17 +80,9 @@ def check_queue(ctx):
                     check_queue(ctx)
         asyncio.run_coroutine_threadsafe(play_next(), bot.loop)
     else:
-        # Hết nhạc thì gửi thông báo nhưng KHÔNG tự động out
         async def stay_in_vc():
             await ctx.send("💿 Đã phát hết danh sách chờ! Vịt sẽ treo ở đây, hãy gõ thêm bài để nghe tiếp nhé.")
         asyncio.run_coroutine_threadsafe(stay_in_vc(), bot.loop)
-    else:
-        async def auto_leave():
-            await asyncio.sleep(180)
-            if ctx.voice_client and not ctx.voice_client.is_playing():
-                await ctx.voice_client.disconnect()
-                await ctx.send("💤 Hết nhạc rồi, mình đi ngủ đây!")
-        asyncio.run_coroutine_threadsafe(auto_leave(), bot.loop)
 
 # ==========================================
 # 4. LỆNH ĐIỀU KHIỂN
@@ -108,7 +100,7 @@ async def play(ctx, *, search: str):
         await ctx.author.voice.channel.connect()
 
     # Nhận diện link Spotify chuẩn
-    if "open.spotify.com" in search:
+    if "spotify.com" in search:
         try:
             track_info = sp.track(search)
             track_name = track_info['name']
