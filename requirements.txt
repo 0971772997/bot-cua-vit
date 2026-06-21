@@ -1,8 +1,4 @@
 discord.py
 yt-dlp
-requests
-beautifulsoup4
-Flask
 spotipy
 PyNaCl
-python-dotenv
