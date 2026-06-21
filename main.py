@@ -145,6 +145,22 @@ async def leave(ctx):
         await ctx.voice_client.disconnect()
         await ctx.send("👋 Bye bye!")
 
+@bot.command(name='queue', aliases=['q'], help='Xem danh sách bài hát đang chờ')
+async def queue_cmd(ctx):
+    if ctx.guild.id in music_queues and music_queues[ctx.guild.id]:
+        queue_list = music_queues[ctx.guild.id]
+        msg = "**🎶 Danh sách chờ của Vịt:**\n"
+        
+        # Duyệt qua các bài hát trong hàng đợi
+        for i, track in enumerate(queue_list, 1):
+            # Xóa chữ "scsearch:" đi cho đẹp mắt
+            clean_name = track.replace("scsearch:", "")
+            msg += f"**{i}.** `{clean_name}`\n"
+            
+        await ctx.send(msg)
+    else:
+        await ctx.send("📭 Hàng đợi hiện tại đang trống trơn. Hãy thêm nhạc bằng lệnh `!kitty play` nha!")
+
 # ==========================================
 # 5. MỞ CỔNG WEB ẢO (CHỐNG RENDER TIMEOUT)
 # ==========================================
