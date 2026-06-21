@@ -5,11 +5,12 @@ import yt_dlp
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ==========================================
-# 1. KHỞI TẠO BIẾN MÔI TRƯỜNG & KIỂM TRA BẢO MẬT
+# 1. KHỞI TẠO BIẾN MÔI TRƯỜNG & KIỂM TRA
 # ==========================================
-# Đọc trực tiếp từ Render và tự động xóa khoảng trắng thừa
 DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN', '').strip()
 SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID', '').strip()
 SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', '').strip()
@@ -24,13 +25,13 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
 ))
 
 # ==========================================
-# 2. CẤU HÌNH LUỒNG ÂM THANH (CHỈ SOUNDCLOUD)
+# 2. CẤU HÌNH ÂM THANH (SOUNDCLOUD)
 # ==========================================
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
-    'default_search': 'scsearch', # Ép 100% tìm kiếm qua SoundCloud
+    'default_search': 'scsearch', # Ép tìm qua SoundCloud
     'source_address': '0.0.0.0'
 }
 
@@ -101,8 +102,8 @@ async def play(ctx, *, search: str):
     if not ctx.voice_client:
         await ctx.author.voice.channel.connect()
 
-    # Nhận diện link Spotify và chuyển thành từ khóa
-    if "spotify.com/track" in search:
+    # Nhận diện link Spotify chuẩn
+    if "open.spotify.com" in search:
         try:
             track_info = sp.track(search)
             track_name = track_info['name']
@@ -112,7 +113,7 @@ async def play(ctx, *, search: str):
         except Exception as e:
             return await ctx.send("❌ Lỗi đọc link Spotify. Bạn kiểm tra lại link nhé!")
     
-    # Nếu chỉ gõ chữ bình thường, ép tìm qua SoundCloud
+    # Ép tìm qua SoundCloud nếu là chữ bình thường
     elif not search.startswith("http"):
         search = f"scsearch:{search}"
 
@@ -143,27 +144,30 @@ async def leave(ctx):
         music_queues[ctx.guild.id] = []
         await ctx.voice_client.disconnect()
         await ctx.send("👋 Bye bye!")
-# ==========================================
-# 5. MỞ CỔNG WEB ẢO ĐỂ ĐÁNH LỪA RENDER (Tránh lỗi Timeout)
-# ==========================================
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
+# ==========================================
+# 5. MỞ CỔNG WEB ẢO (CHỐNG RENDER TIMEOUT)
+# ==========================================
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot Vit De Thuong dang hoat dong!")
-        # Tắt log thừa để Terminal đỡ rác
+        
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
     def log_message(self, format, *args):
         pass
 
 def keep_alive():
-    server = HTTPServer(('0.0.0.0', 8080), DummyHandler)
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), DummyHandler)
+    print(f"🌐 Đã mở cổng Web ảo tại Port {port} để Render kiểm tra...")
     server.serve_forever()
 
-# Chạy cổng Web ảo ở chế độ chạy ngầm
 threading.Thread(target=keep_alive, daemon=True).start()
 
-# Lệnh khởi chạy bot gốc của bạn (Giữ nguyên)
+# Chạy bot (Chỉ 1 dòng duy nhất)
 bot.run(DISCORD_TOKEN)
