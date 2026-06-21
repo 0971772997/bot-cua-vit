@@ -167,4 +167,3 @@ threading.Thread(target=keep_alive, daemon=True).start()
 
 # Lệnh khởi chạy bot gốc của bạn (Giữ nguyên)
 bot.run(DISCORD_TOKEN)
-bot.run(DISCORD_TOKEN)
