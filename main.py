@@ -143,5 +143,28 @@ async def leave(ctx):
         music_queues[ctx.guild.id] = []
         await ctx.voice_client.disconnect()
         await ctx.send("👋 Bye bye!")
+# ==========================================
+# 5. MỞ CỔNG WEB ẢO ĐỂ ĐÁNH LỪA RENDER (Tránh lỗi Timeout)
+# ==========================================
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot Vit De Thuong dang hoat dong!")
+        # Tắt log thừa để Terminal đỡ rác
+    def log_message(self, format, *args):
+        pass
+
+def keep_alive():
+    server = HTTPServer(('0.0.0.0', 8080), DummyHandler)
+    server.serve_forever()
+
+# Chạy cổng Web ảo ở chế độ chạy ngầm
+threading.Thread(target=keep_alive, daemon=True).start()
+
+# Lệnh khởi chạy bot gốc của bạn (Giữ nguyên)
+bot.run(DISCORD_TOKEN)
 bot.run(DISCORD_TOKEN)
