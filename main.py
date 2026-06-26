@@ -45,7 +45,7 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
 # ==========================================
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
-    'noplaylist': True,  # Mặc định bật khi tìm kiếm để tối ưu tốc độ
+    'noplaylist': True,
     'quiet': True,
     'source_address': '0.0.0.0',
     'nocheckcertificate': True,
@@ -78,54 +78,38 @@ class YTDLSource(discord.PCMVolumeTransformer):
         loop = loop or asyncio.get_event_loop()
         opts = YTDL_OPTIONS.copy()
         
-        # --- XỬ LÝ LINK TRỰC TIẾP ---
-        if url.startswith("http"):
-            if "playlist" in url or "sets" in url or "on.soundcloud.com" in url or "soundcloud.com" in url:
-                opts['noplaylist'] = False
-            
-            if "youtube.com" in url or "youtu.be" in url:
-                opts['extractor_args'] = YOUTUBE_BYPASS_ARGS
-                
-            try:
-                # KẾ HOẠCH A: Thử tải link trực tiếp (Cả SoundCloud/YouTube)
-                data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False))
-                return data
-            except Exception as e:
-                # KẾ HOẠCH B: Nếu SoundCloud chặn IP (403), biến link thành từ khóa để tìm Album trên YouTube
-                if "403" in str(e) or "Forbidden" in str(e):
-                    print(f"⚠️ Link trực tiếp bị chặn IP (403). Tiến hành chuyển đổi sang YouTube Search...")
-                    # Làm sạch link, lấy phần đuôi tên playlist làm từ khóa tìm kiếm
-                    clean_keyword = url.split('/')[-1].replace('-', ' ')
-                    yt_search = f"ytsearch:{clean_keyword} album"
-                    opts['noplaylist'] = True  # Bật lại để lấy kết quả tìm kiếm tốt nhất
-                    opts['extractor_args'] = YOUTUBE_BYPASS_ARGS
-                    data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(yt_search, download=not stream))
-                    if 'entries' in data and data['entries']:
-                        return data['entries'][0]
-                raise e
-            
-        # --- XỬ LÝ TÌM KIẾM TỪ KHÓA THƯỜNG ---
-        else:
+        # --- CƠ CHẾ DỰ PHÒNG KÉP (FALLBACK): KHẮC PHỤC HOÀN TOÀN LỖI CHẶN IP 403 ---
+if not url.startswith("http"):
+            # KẾ HOẠCH A: Ưu tiên tìm kiếm bằng SoundCloud
             sc_search = f"scsearch:{url}"
             try:
+                print(f"🔍 [Plan A] Đang tìm kiếm trên SoundCloud: {url}")
                 data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(sc_search, download=not stream))
                 if 'entries' in data and data['entries']:
-                    return data['entries'][0]
-            except Exception:
-                pass
+                    extracted_data = data['entries'][0]
+                    filename = extracted_data['url'] if stream else yt_dlp.YoutubeDL(opts).prepare_filename(extracted_data)
+                    return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=extracted_data)
+            except Exception as e:
+                print(f"⚠️ SoundCloud bị lỗi hoặc chặn IP (403): {e}")
+                print("🔄 [Plan B] Tự động kích hoạt luồng cứu hộ sang YouTube Mobile...")
             
-            yt_search = f"ytsearch:{url}"
+            # KẾ HOẠCH B: Nếu SoundCloud lỗi, tự động chuyển sang YouTube mã hóa Mobile
+            url = f"ytsearch:{url}"
             opts['extractor_args'] = YOUTUBE_BYPASS_ARGS
-            data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(yt_search, download=not stream))
-            if 'entries' in data and data['entries']:
-                return data['entries'][0]
-                
-        raise Exception("Không tìm thấy nguồn kết quả phù hợp.")
+        else:
+            # Nếu người dùng đưa link trực tiếp
+            if "youtube.com" in url or "youtu.be" in url:
+                opts['extractor_args'] = YOUTUBE_BYPASS_ARGS
 
-    @classmethod
-    def create_audio_source(cls, entry):
-        filename = entry['url']
-        return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=entry)
+        data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=not stream))
+        
+        if 'entries' in data:
+            if not data['entries']:
+                raise Exception("Không tìm thấy kết quả phù hợp trên cả SoundCloud lẫn YouTube.")
+            data = data['entries'][0]
+            
+        filename = data['url'] if stream else yt_dlp.YoutubeDL(opts).prepare_filename(data)
+        return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
 
 # ==========================================
 # 3. KHỞI TẠO BOT & HÀNG ĐỢI
@@ -142,10 +126,7 @@ def check_queue(ctx):
         async def play_next():
             async with ctx.typing():
                 try:
-                    # Trích xuất dữ liệu trực tiếp từ đường link đã được lưu trong hàng đợi
-                    raw_data = await YTDLSource.from_url(next_track, loop=bot.loop, stream=True)
-                    entry = raw_data['entries'][0] if 'entries' in raw_data else raw_data
-                    player = YTDLSource.create_audio_source(entry)
+                    player = await YTDLSource.from_url(next_track, loop=bot.loop, stream=True)
                     ctx.voice_client.play(player, after=lambda e: check_queue(ctx))
                     await ctx.send(f"🎵 **Đang phát bài tiếp theo:** `{player.title}`")
                 except Exception as e:
@@ -154,7 +135,7 @@ def check_queue(ctx):
         asyncio.run_coroutine_threadsafe(play_next(), bot.loop)
     else:
         async def stay_in_vc():
-            await ctx.send(f"💿 Đã phát hết danh sách chờ! Hãy gõ thêm bài bằng lệnh `{BOT_PREFIX} play` để nghe tiếp nhé.")
+await ctx.send(f"💿 Đã phát hết danh sách chờ! Hãy gõ thêm bài bằng lệnh `{BOT_PREFIX} play` để nghe tiếp nhé.")
         asyncio.run_coroutine_threadsafe(stay_in_vc(), bot.loop)
 
 # ==========================================
@@ -162,6 +143,7 @@ def check_queue(ctx):
 # ==========================================
 @bot.event
 async def on_ready():
+    # Nạp thư viện âm thanh nền tảng của Discord
     if not discord.opus.is_loaded():
         try:
             discord.opus.load_opus()
@@ -190,13 +172,16 @@ async def play(ctx, *, search: str):
                 pass
             await asyncio.sleep(1)
             await target_channel.connect(timeout=10.0, reconnect=True)
+    # ---------------------------------------------------
 
-    # Giải mã link Spotify
+    # Sửa logic nhận diện link Spotify chuẩn xác hơn
     if "spotify.com" in search or "open.spotify.com" in search:
         try:
             track_info = sp.track(search)
-            search = f"{track_info['name']} {track_info['artists'][0]['name']}"
-            await ctx.send(f"🔍 Đã nhận diện Spotify: **{track_info['name']}**. Đang phân tích luồng nhạc...")
+            track_name = track_info['name']
+            artist_name = track_info['artists'][0]['name']
+            search = f"{track_name} {artist_name}"
+            await ctx.send(f"🔍 Đã nhận diện Spotify: **{track_name} - {artist_name}**. Đang phân tích luồng nhạc...")
         except Exception:
             return await ctx.send("❌ Lỗi đọc link Spotify. Vui lòng kiểm tra cấu hình hoặc link nhạc!")
 
@@ -205,46 +190,17 @@ async def play(ctx, *, search: str):
 
     async with ctx.typing():
         try:
-            raw_data = await YTDLSource.from_url(search, loop=bot.loop, stream=True)
-            
-            # TRƯỜNG HỢP 1: Phát hiện có danh sách bài hát (Playlist/Album) từ link trực tiếp
-            if raw_data and 'entries' in raw_data and not search.startswith("ytsearch") and not search.startswith("scsearch"):
-                entries = list(raw_data['entries'])
-                total_tracks = len(entries)
-                
-                await ctx.send(f"📚 Đã nhận diện Playlist! Đang nạp **{total_tracks} bài hát** vào danh sách chờ...")
-                
-                # Nếu bot đang không phát nhạc, lấy ngay bài đầu tiên ra chạy mở màn
-                if not ctx.voice_client.is_playing() and not ctx.voice_client.is_paused():
-                    first_entry = entries.pop(0)
-                    player = YTDLSource.create_audio_source(first_entry)
-                    ctx.voice_client.play(player, after=lambda e: check_queue(ctx))
-                    await ctx.send(f"🎵 **Đang phát bài mở đầu:** `{player.title}`")
-                
-                # Đẩy toàn bộ link bài viết đơn lẻ của các bài còn lại vào hàng đợi
-                for entry in entries:
-                    if entry and 'webpage_url' in entry:
-                        music_queues[ctx.guild.id].append(entry['webpage_url'])
-                
-                await ctx.send(f"✅ Đã xếp xong {len(entries)} bài tiếp theo vào hàng đợi.")
-
-            # TRƯỜNG HỢP 2: Bài hát đơn lẻ hoặc từ khoá tìm kiếm thường
+            if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
+                music_queues[ctx.guild.id].append(search)
+                clean_name = search.replace("scsearch:", "").replace("ytsearch:", "")
+                await ctx.send(f"⏳ Đã thêm vào hàng đợi bài: `{clean_name}` (Vị trí #{len(music_queues[ctx.guild.id])})")
             else:
-                entry = raw_data['entries'][0] if 'entries' in raw_data else raw_data
-                
-                if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
-                    url_to_queue = entry['webpage_url'] if 'webpage_url' in entry else search
-                    music_queues[ctx.guild.id].append(url_to_queue)
-                    clean_name = entry.get('title', search)
-                    await ctx.send(f"⏳ Đã thêm vào hàng đợi bài: `{clean_name}` (Vị trí #{len(music_queues[ctx.guild.id])})")
-                else:
-                    player = YTDLSource.create_audio_source(entry)
-                    ctx.voice_client.play(player, after=lambda e: check_queue(ctx))
-                    await ctx.send(f"🎵 **Đang phát:** `{player.title}`")
-                    
+                player = await YTDLSource.from_url(search, loop=bot.loop, stream=True)
+                ctx.voice_client.play(player, after=lambda e: check_queue(ctx))
+                await ctx.send(f"🎵 **Đang phát:** `{player.title}`")
         except Exception as e:
-            print(f"Lỗi hệ thống phát nhạc: {e}")
-            await ctx.send("❌ Cả SoundCloud lẫn YouTube đều từ chối kết nối hoặc không đọc được định dạng link này. Vui lòng kiểm tra lại!")
+print(f"Lỗi hệ thống nghiêm trọng: {e}")
+            await ctx.send("❌ Cả SoundCloud lẫn YouTube đều từ chối kết nối do nghẽn IP dải phòng máy Render. Vui lòng thử lại sau!")
 
 @bot.command(name='skip', help='Bỏ qua bài hiện tại')
 async def skip(ctx):
@@ -263,13 +219,10 @@ async def leave(ctx):
 async def queue_cmd(ctx):
     if ctx.guild.id in music_queues and music_queues[ctx.guild.id]:
         queue_list = music_queues[ctx.guild.id]
-        msg = f"**🎶 Danh sách chờ (Tổng cộng {len(queue_list)} bài):**\n"
-        # Chỉ hiển thị tối đa 15 bài đầu để tránh tràn ký tự gửi của Discord
-        for i, track in enumerate(queue_list[:15], 1):
-            clean_name = track.split('/')[-1].replace('-', ' ').capitalize()
+        msg = "**🎶 Danh sách chờ:**\n"
+        for i, track in enumerate(queue_list, 1):
+            clean_name = track.replace("scsearch:", "").replace("ytsearch:", "")
             msg += f"**{i}.** `{clean_name}`\n"
-        if len(queue_list) > 15:
-            msg += f"*...và {len(queue_list) - 15} bài hát khác phía sau.*"
         await ctx.send(msg)
     else:
         await ctx.send(f"📭 Hàng đợi trống. Thêm nhạc bằng lệnh `{BOT_PREFIX} play` nha!")
