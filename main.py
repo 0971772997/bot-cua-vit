@@ -80,27 +80,39 @@ class YTDLSource(discord.PCMVolumeTransformer):
         
         # --- XỬ LÝ LINK TRỰC TIẾP ---
         if url.startswith("http"):
-            # Nếu phát hiện link chứa cấu trúc danh sách, tắt chặn playlist
-            if "playlist" in url or "sets" in url or "on.soundcloud.com" in url:
+            if "playlist" in url or "sets" in url or "on.soundcloud.com" in url or "soundcloud.com" in url:
                 opts['noplaylist'] = False
             
             if "youtube.com" in url or "youtu.be" in url:
                 opts['extractor_args'] = YOUTUBE_BYPASS_ARGS
                 
-            data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False))
-            return data
+            try:
+                # KẾ HOẠCH A: Thử tải link trực tiếp (Cả SoundCloud/YouTube)
+                data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False))
+                return data
+            except Exception as e:
+                # KẾ HOẠCH B: Nếu SoundCloud chặn IP (403), biến link thành từ khóa để tìm Album trên YouTube
+                if "403" in str(e) or "Forbidden" in str(e):
+                    print(f"⚠️ Link trực tiếp bị chặn IP (403). Tiến hành chuyển đổi sang YouTube Search...")
+                    # Làm sạch link, lấy phần đuôi tên playlist làm từ khóa tìm kiếm
+                    clean_keyword = url.split('/')[-1].replace('-', ' ')
+                    yt_search = f"ytsearch:{clean_keyword} album"
+                    opts['noplaylist'] = True  # Bật lại để lấy kết quả tìm kiếm tốt nhất
+                    opts['extractor_args'] = YOUTUBE_BYPASS_ARGS
+                    data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(yt_search, download=not stream))
+                    if 'entries' in data and data['entries']:
+                        return data['entries'][0]
+                raise e
             
-        # --- XỬ LÝ TÌM KIẾM TỪ KHÓA (SEARCH VÀ FALLBACK) ---
+        # --- XỬ LÝ TÌM KIẾM TỪ KHÓA THƯỜNG ---
         else:
             sc_search = f"scsearch:{url}"
             try:
-                print(f"🔍 [Plan A] Đang tìm kiếm trên SoundCloud: {url}")
                 data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(opts).extract_info(sc_search, download=not stream))
                 if 'entries' in data and data['entries']:
                     return data['entries'][0]
-            except Exception as e:
-                print(f"⚠️ SoundCloud lỗi hoặc chặn IP (403): {e}")
-                print("🔄 [Plan B] Tự động kích hoạt luồng cứu hộ sang YouTube Mobile...")
+            except Exception:
+                pass
             
             yt_search = f"ytsearch:{url}"
             opts['extractor_args'] = YOUTUBE_BYPASS_ARGS
@@ -112,7 +124,6 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
     @classmethod
     def create_audio_source(cls, entry):
-        """Hàm phụ trợ giải mã audio từ thông tin bài đơn lẻ"""
         filename = entry['url']
         return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=entry)
 
