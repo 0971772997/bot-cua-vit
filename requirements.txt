@@ -1,5 +1,4 @@
-discord.py
+discord.py[voice]>=2.7.1
 yt-dlp
 spotipy
-PyNaCl
-davey
+PyNaCl==1.5.0
